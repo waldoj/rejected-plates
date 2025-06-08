@@ -40,16 +40,13 @@ RESPONSE=$(curl -s -H "Authorization: Bearer ${MASTODON_TOKEN}" -X POST \
     --form "description=$ALT_TEXT" | grep -E -o "\"id\":\"([0-9]+)\"")
 RESULT=$?
 if [ "$RESULT" -ne 0 ]; then
-    echo $RESPONSE
-    exit_error "Image could not be uploaded"
+    exit_error "Image could not be uploaded to Mastodon"
 fi
 
-# Strip the media ID response down to the integer; this is in lieu of actually parsing the JSON
-MEDIA_ID=$(echo "$RESPONSE" |grep -E -o "[0-9]+")
-
-# If the upload didn't yield a valid media ID, give up
+# If the image upload wasn't successful, give up.
+MEDIA_ID=$(echo "$RESPONSE" | grep -E -o "[0-9]+")
 if [ ${#MEDIA_ID} -lt 10 ]; then
-    exit_error "Image upload didn’t return a valid media ID"
+    exit_error "Image upload didn’t return a valid Mastodon media ID"
 fi
 
 # Post the status to Mastodon, including the uploaded image
