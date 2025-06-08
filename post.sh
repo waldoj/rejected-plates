@@ -25,10 +25,11 @@ cd "$(dirname "$0")" || exit
 # Generate a plate image
 output=$(python3 generate.py)
 license_plate=$(echo "$output" | grep -oP 'Random plate selected: \K[A-Z0-9& -]{1,8}')
+IMAGE_PATH="license_plate.png"
+ALT_TEXT="A Virginia license plate reading ${license_plate}"
 
-if [[ ! -f "license_plate.png" ]]; then
-    echo "Error: A license plate image was not created."
-    exit
+if [[ ! -f "$IMAGE_PATH" ]]; then
+    exit_error "Error: A license plate image was not created."
 fi
 
 # Upload the image to Mastodon
