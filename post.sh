@@ -32,7 +32,11 @@ if [[ ! -f "license_plate.png" ]]; then
 fi
 
 # Upload the image to Mastodon
-RESPONSE=$(curl -H "Authorization: Bearer ${MASTODON_TOKEN}" -X POST -H "Content-Type: multipart/form-data" ${MASTODON_SERVER}/api/v1/media --form file="@license_plate.png" --form "description=A Virginia license plate reading ${license_plate}" |grep -E -o "\"id\":\"([0-9]+)\"")
+RESPONSE=$(curl -s -H "Authorization: Bearer ${MASTODON_TOKEN}" -X POST \
+    -H "Content-Type: multipart/form-data" \
+    "${MASTODON_SERVER}/api/v1/media" \
+    --form file=@"$IMAGE_PATH" \
+    --form "description=$ALT_TEXT" | grep -E -o "\"id\":\"([0-9]+)\"")
 RESULT=$?
 if [ "$RESULT" -ne 0 ]; then
     echo $RESPONSE
@@ -47,8 +51,11 @@ if [ ${#MEDIA_ID} -lt 10 ]; then
     exit_error "Image upload didn’t return a valid media ID"
 fi
 
-# Send the message to Mastodon
-curl "$MASTODON_SERVER"api/v1/statuses -H "Authorization: Bearer ${MASTODON_TOKEN}" --data "media_ids[]=${MEDIA_ID}" --data "status=  "
+# Post the status to Mastodon, including the uploaded image
+curl -s "${MASTODON_SERVER}/api/v1/statuses" \
+    -H "Authorization: Bearer ${MASTODON_TOKEN}" \
+    --data "media_ids[]=${MEDIA_ID}" \
+    --data-urlencode "status="
 
 # Login to Bluesky to get session token
 SESSION_JSON=$(curl -s -X POST https://bsky.social/xrpc/com.atproto.server.createSession \
