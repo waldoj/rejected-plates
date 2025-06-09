@@ -90,7 +90,7 @@ POST_BODY=$(cat <<EOF
         {
           "image": $IMAGE_BLOB,
           "alt": "$ALT_TEXT",
-          "aspectRatio": {"width: 350, "height": 176}
+          "aspectRatio": {"width": 350, "height": 176}
         }
       ]
     }
