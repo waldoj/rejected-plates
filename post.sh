@@ -1,38 +1,45 @@
 #!/usr/bin/env bash
 
-# URL of your Mastodon server, without a trailing slash
-MASTODON_SERVER="{{MASTODON_SERVER}}"
-
-# Your Mastodon account's access token
-MASTODON_TOKEN="{{MASTODON_TOKEN}}"
-
-# Your Bluesky handle
-BLUESKY_HANDLE="{{BLUESKY_HANDLE}}"
-
-# Your Bluesky app password
-BLUESKY_APP_PASSWORD="{{BLUESKY_APP_PASSWORD}}"
-
-# Define a failure function
-function exit_error {
-    printf '%s\n' "$1" >&2
-    rm -f license_plate.png
-    exit "${2-1}"
-}
+# Shared library. Credentials, logging and the failure path come from here;
+# see lib/botlib/ and the bot-harness docs.
+#
+# Only core and secrets are sourced. The platform helpers in mastodon.sh and
+# bluesky.sh are deliberately not used yet: this bot talks to Mastodon's v1
+# media endpoint and parses responses with grep, and moving it to the shared
+# v2 helpers would change what it sends. That is a separate, reviewed commit.
+. "$(dirname "$0")/lib/botlib/core.sh"
+. "$(dirname "$0")/lib/botlib/secrets.sh"
 
 # Move into the directory where this script is found
 cd "$(dirname "$0")" || exit
 
+load_secrets rejected-plates
+require_secrets MASTODON_SERVER MASTODON_TOKEN BLUESKY_HANDLE BLUESKY_APP_PASSWORD
+
+# The generated plate image, removed however this script exits. The original
+# did this inside exit_error; a trap covers the success path too, and leaves
+# the shared exit_error free of anything bot-specific.
+IMAGE_PATH="license_plate.png"
+
+function cleanup {
+    rm -f "$IMAGE_PATH"
+}
+
+trap cleanup EXIT
+
 # Generate a plate image
 output=$(python3 generate.py)
 license_plate=$(echo "$output" | grep -oP 'Random plate selected: \K[A-Z0-9& -]{1,8}')
-IMAGE_PATH="license_plate.png"
 ALT_TEXT="A Virginia license plate reading ${license_plate}"
 
 if [[ ! -f "$IMAGE_PATH" ]]; then
     exit_error "Error: A license plate image was not created."
 fi
 
-# Upload the image to Mastodon
+# Upload the image to Mastodon.
+#
+# Note that RESULT captures grep's exit status rather than curl's, since curl
+# is piped. Preserved as-is: correcting it would change when this bot fails.
 RESPONSE=$(curl -s -H "Authorization: Bearer ${MASTODON_TOKEN}" -X POST \
     -H "Content-Type: multipart/form-data" \
     "${MASTODON_SERVER}/api/v1/media" \
@@ -55,6 +62,8 @@ curl -s "${MASTODON_SERVER}/api/v1/statuses" \
     --data "media_ids[]=${MEDIA_ID}" \
     --data-urlencode "status="
 
+log_info "posted to mastodon media_id=${MEDIA_ID}"
+
 # Login to Bluesky to get session token
 SESSION_JSON=$(curl -s -X POST https://bsky.social/xrpc/com.atproto.server.createSession \
   -H "Content-Type: application/json" \
@@ -64,6 +73,9 @@ ACCESS_JWT=$(echo "$SESSION_JSON" | grep -o '"accessJwt":"[^"]*' | cut -d':' -f2
 if [ -z "$ACCESS_JWT" ]; then
   exit_error "Bluesky login failed."
 fi
+
+# The session token is a credential in its own right, so keep it out of logs
+add_redaction "$ACCESS_JWT"
 
 # Upload the image to Bluesky
 BLOB_JSON=$(curl -s -X POST "https://bsky.social/xrpc/com.atproto.repo.uploadBlob" \
@@ -75,7 +87,11 @@ if [ -z "$IMAGE_BLOB" ]; then
   exit_error "Image upload to Bluesky failed."
 fi
 
-# Prepare the status post for Bluesky
+# Prepare the status post for Bluesky.
+#
+# repo is the handle rather than the account's DID. That is wrong -- the DID is
+# what a record is keyed on, and survives a handle change -- but it is what
+# this bot sends today, and correcting it is a separate commit.
 POST_BODY=$(cat <<EOF
 {
   "repo": "$BLUESKY_HANDLE",
@@ -110,5 +126,4 @@ if ! echo "$BLUESKY_RESPONSE" | jq -e '.uri' >/dev/null 2>&1; then
   exit_error "Bluesky post failed: $BLUESKY_RESPONSE"
 fi
 
-# Delete the image file after posting
-rm -f "$IMAGE_PATH"
+log_info "posted to bluesky uri=$(echo "$BLUESKY_RESPONSE" | jq -r '.uri // empty')"
