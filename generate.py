@@ -40,4 +40,4 @@ def get_random_plate():
 # Example usage
 random_plate_text = get_random_plate()
 print("Random plate selected: " + random_plate_text)
-generate_license_plate('DENIED')
+generate_license_plate(random_plate_text)
