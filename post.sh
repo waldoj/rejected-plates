@@ -43,21 +43,21 @@ fi
 # the media was ready, which was simpler but meant a slow upload could time
 # out with no way to resume. v2 accepts immediately and is polled.
 MEDIA_ID=$(masto_upload_media "$IMAGE_PATH" "$ALT_TEXT") \
-    || exit_error "Image could not be uploaded to Mastodon"
+    || exit_error "Image could not be uploaded to Mastodon: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 masto_await_media "$MEDIA_ID" \
-    || exit_error "Mastodon never finished processing the image"
+    || exit_error "Mastodon never finished processing the image: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 # Post the status to Mastodon, including the uploaded image. The body is empty:
 # the alt text carries the plate, and the image is the post.
 masto_post_status "" "$MEDIA_ID" > /dev/null \
-    || exit_error "Posting message to Mastodon failed"
+    || exit_error "Posting message to Mastodon failed: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 log_info "posted to mastodon media_id=${MEDIA_ID}"
 
 # Login to Bluesky
 SESSION_JSON=$(bsky_create_session "$BLUESKY_HANDLE" "$BLUESKY_APP_PASSWORD") \
-    || exit_error "Bluesky login failed."
+    || exit_error "Bluesky login failed: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 ACCESS_JWT=$(bsky_access_jwt "$SESSION_JSON")
 
@@ -66,7 +66,7 @@ ACCESS_JWT=$(bsky_access_jwt "$SESSION_JSON")
 # on -- a handle change would orphan every post made under the old one.
 BLUESKY_DID=$(bsky_did "$SESSION_JSON")
 if [ -z "$BLUESKY_DID" ]; then
-    exit_error "Bluesky login didn’t return a DID."
+    exit_error "Bluesky login didn’t return a DID: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 fi
 
 # Upload the image, which goes to the account's own PDS rather than to
@@ -76,7 +76,7 @@ PDS_HOST=$(bsky_pds_host_from_session "$SESSION_JSON") \
     || exit_error "Could not determine the Bluesky PDS host."
 
 IMAGE_BLOB=$(bsky_upload_blob "$PDS_HOST" "$ACCESS_JWT" "image/png" "$IMAGE_PATH") \
-    || exit_error "Image upload to Bluesky failed."
+    || exit_error "Image upload to Bluesky failed: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 # Prepare the record. Built with jq rather than a heredoc so that alt text
 # containing a quote or a backslash is escaped rather than producing invalid
@@ -103,6 +103,6 @@ RECORD=$(jq -n \
     }')
 
 BLUESKY_RESPONSE=$(bsky_create_record "$BLUESKY_DID" "$ACCESS_JWT" "$RECORD") \
-    || exit_error "Bluesky post failed."
+    || exit_error "Bluesky post failed: HTTP ${BOTLIB_LAST_STATUS} ${BOTLIB_LAST_BODY}"
 
 log_info "posted to bluesky uri=$(printf '%s' "$BLUESKY_RESPONSE" | jq -r '.uri // empty')"
